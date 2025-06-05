@@ -9,30 +9,36 @@ import CreatePrediction from '@/components/CreatePrediction'
 import PredictionDetails from '@/components/PredictionDetails'
 
 const GET_PREDICTIONS = gql`
-  query GetPredictions($orderBy: String) {
-    predictions(orderBy: $orderBy) {
-      id
-      name
-      description
-      outcome1
-      outcome2
-      createdAt
-      status
-      totalInvested
+  query GetPredictions($orderBy: String, $orderDirection: String) {
+    predictionss(orderBy: $orderBy, orderDirection: $orderDirection) {
+      items {
+        id
+        name
+        description
+        outcome1
+        outcome2
+        optionalReward
+        b
+        url
+        createdAt
+      }
     }
   }
 `
 
 export default function Home() {
-  const [orderBy, setOrderBy] = useState('createdAt_DESC')
+  const [orderBy, setOrderBy] = useState('createdAt')
+  const [orderDirection, setOrderDirection] = useState('desc')
   const [selectedPredictionId, setSelectedPredictionId] = useState<string | null>(null)
 
   const { loading, error, data } = useQuery(GET_PREDICTIONS, {
-    variables: { orderBy },
+    variables: { orderBy, orderDirection },
   })
 
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error.message}</div>
+
+  const predictions = data?.predictionss?.items || []
 
   return (
     <main className="min-h-screen p-8">
@@ -47,19 +53,23 @@ export default function Home() {
 
         <div className="mb-4">
           <select
-            value={orderBy}
-            onChange={(e) => setOrderBy(e.target.value)}
+            value={`${orderBy}_${orderDirection}`}
+            onChange={(e) => {
+              const [field, direction] = e.target.value.split('_')
+              setOrderBy(field)
+              setOrderDirection(direction)
+            }}
             className="input-field max-w-xs"
           >
-            <option value="createdAt_DESC">Newest First</option>
-            <option value="createdAt_ASC">Oldest First</option>
-            <option value="totalInvested_DESC">Most Invested</option>
-            <option value="totalInvested_ASC">Least Invested</option>
+            <option value="createdAt_desc">Newest First</option>
+            <option value="createdAt_asc">Oldest First</option>
+            <option value="name_asc">Name (A-Z)</option>
+            <option value="name_desc">Name (Z-A)</option>
           </select>
         </div>
 
         <div className="grid gap-6">
-          {data?.predictions.map((prediction: any) => (
+          {predictions.map((prediction: any) => (
             <div
               key={prediction.id}
               className="bg-white p-6 rounded-lg shadow-sm border border-gray-200"
@@ -69,9 +79,11 @@ export default function Home() {
                   <h2 className="text-xl font-semibold mb-2">{prediction.name}</h2>
                   <p className="text-gray-600 mb-4">{prediction.description}</p>
                   <div className="flex gap-4 text-sm text-gray-500">
-                    <span>Created: {format(new Date(prediction.createdAt), 'PPp')}</span>
-                    <span>Status: {prediction.status}</span>
-                    <span>Total Invested: {prediction.totalInvested} ETH</span>
+                    <span>Outcomes: {prediction.outcome1} vs {prediction.outcome2}</span>
+                    {prediction.optionalReward && (
+                      <span>Reward: {prediction.optionalReward} USDT</span>
+                    )}
+                    <span>Created: {format(parseInt(prediction.createdAt), 'PPp')}</span>
                   </div>
                 </div>
                 <div className="flex gap-2">

@@ -3,38 +3,40 @@
 import { ApolloProvider } from '@apollo/client'
 import { RainbowKitProvider, getDefaultWallets } from '@rainbow-me/rainbowkit'
 import { SessionProvider } from 'next-auth/react'
-import { WagmiConfig, createConfig, configureChains } from 'wagmi'
+import { WagmiConfig, createConfig } from 'wagmi'
 import { mainnet, bscTestnet } from 'wagmi/chains'
-import { publicProvider } from 'wagmi/providers/public'
+import { http } from 'viem'
 import { apolloClient } from '@/lib/apollo'
-
-const { chains, publicClient } = configureChains(
-  [mainnet, bscTestnet],
-  [publicProvider()]
-)
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const { connectors } = getDefaultWallets({
   appName: 'Prediction Admin Dashboard',
   projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || '',
-  chains,
 })
 
-const wagmiConfig = createConfig({
-  autoConnect: true,
+const config = createConfig({
+  chains: [mainnet, bscTestnet],
+  transports: {
+    [mainnet.id]: http(),
+    [bscTestnet.id]: http(),
+  },
   connectors,
-  publicClient,
 })
+
+const queryClient = new QueryClient()
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
-      <WagmiConfig config={wagmiConfig}>
-        <RainbowKitProvider chains={chains}>
-          <ApolloProvider client={apolloClient}>
-            {children}
-          </ApolloProvider>
+    <QueryClientProvider client={queryClient}>
+      <WagmiConfig config={config}>
+        <RainbowKitProvider>
+          <SessionProvider>
+            <ApolloProvider client={apolloClient}>
+              {children}
+            </ApolloProvider>
+          </SessionProvider>
         </RainbowKitProvider>
       </WagmiConfig>
-    </SessionProvider>
+    </QueryClientProvider>
   )
 } 

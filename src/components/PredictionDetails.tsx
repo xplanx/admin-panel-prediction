@@ -6,24 +6,26 @@ import { gql } from '@apollo/client'
 import { format } from 'date-fns'
 
 const GET_PREDICTION_DETAILS = gql`
-  query GetPredictionDetails($id: ID!) {
-    prediction(id: $id) {
+  query GetPredictionDetails($id: String!) {
+    predictions(id: $id) {
       id
       name
       description
       outcome1
       outcome2
+      optionalReward
+      b
+      url
       createdAt
-      status
-      totalInvested
-      bets {
-        id
-        user {
-          address
+      shares {
+        items {
+          id
+          buyOrSell
+          outcome
+          amount
+          price
+          createdAt
         }
-        outcome
-        amount
-        createdAt
       }
     }
   }
@@ -45,7 +47,7 @@ export default function PredictionDetails({
   if (loading) return <div>Loading...</div>
   if (error) return <div>Error: {error.message}</div>
 
-  const prediction = data?.prediction
+  const prediction = data?.predictions
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
@@ -79,29 +81,36 @@ export default function PredictionDetails({
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <h3 className="text-lg font-semibold mb-2">Status</h3>
-              <p className="text-gray-600">{prediction.status}</p>
-            </div>
-            <div>
               <h3 className="text-lg font-semibold mb-2">Created</h3>
               <p className="text-gray-600">
-                {format(new Date(prediction.createdAt), 'PPp')}
+                {format(parseInt(prediction.createdAt), 'PPp')}
               </p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold mb-2">Total Invested</h3>
-              <p className="text-gray-600">{prediction.totalInvested} ETH</p>
+              <h3 className="text-lg font-semibold mb-2">Optional Reward</h3>
+              <p className="text-gray-600">{prediction.optionalReward || 'N/A'}</p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">URL</h3>
+              <a 
+                href={prediction.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800"
+              >
+                {prediction.url}
+              </a>
             </div>
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold mb-4">Bets</h3>
+            <h3 className="text-lg font-semibold mb-4">Shares</h3>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
+                      Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Outcome
@@ -110,24 +119,30 @@ export default function PredictionDetails({
                       Amount
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Price
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Date
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {prediction.bets.map((bet: any) => (
-                    <tr key={bet.id}>
+                  {prediction.shares.items.map((share: any) => (
+                    <tr key={share.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {bet.user.address.slice(0, 6)}...{bet.user.address.slice(-4)}
+                        {share.buyOrSell ? 'Buy' : 'Sell'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {bet.outcome}
+                        {share.outcome}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {bet.amount} ETH
+                        {parseInt(share.amount) / 1e18} USDT
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {format(new Date(bet.createdAt), 'PPp')}
+                        {share.price}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {format(parseInt(share.createdAt), 'PPp')}
                       </td>
                     </tr>
                   ))}
