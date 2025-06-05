@@ -31,7 +31,7 @@ export default function Home() {
   const [orderDirection, setOrderDirection] = useState('desc')
   const [selectedPredictionId, setSelectedPredictionId] = useState<string | null>(null)
 
-  const { loading, error, data } = useQuery(GET_PREDICTIONS, {
+  const { loading, error, data, refetch } = useQuery(GET_PREDICTIONS, {
     variables: { orderBy, orderDirection },
   })
 
@@ -46,12 +46,12 @@ export default function Home() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Predictions</h1>
           <div className="flex items-center gap-4">
-            <CreatePrediction />
+            <CreatePrediction onClose={() => refetch()} />
             <ConnectButton />
           </div>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 flex items-center gap-2">
           <select
             value={`${orderBy}_${orderDirection}`}
             onChange={(e) => {
@@ -66,6 +66,15 @@ export default function Home() {
             <option value="name_asc">Name (A-Z)</option>
             <option value="name_desc">Name (Z-A)</option>
           </select>
+          <button
+            onClick={() => refetch()}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+            </svg>
+            Reload
+          </button>
         </div>
 
         <div className="grid gap-6">

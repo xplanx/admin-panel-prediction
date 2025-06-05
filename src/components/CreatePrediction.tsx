@@ -1,32 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation } from '@apollo/client'
-import { gql } from '@apollo/client'
+import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { parseEther } from 'viem'
 
-const CREATE_PREDICTION = gql`
-  mutation CreatePrediction(
-    $name: String!
-    $description: String!
-    $outcome1: String!
-    $outcome2: String!
-    $url: String!
-  ) {
-    createPrediction(
-      name: $name
-      description: $description
-      outcome1: $outcome1
-      outcome2: $outcome2
-      url: $url
-    ) {
-      id
-      name
-    }
-  }
-`
+// TODO: Replace with actual ABI
+const CONTRACT_ABI = [{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"buyer","type":"address"},{"indexed":false,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcome","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"BuyShares","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":false,"internalType":"string","name":"assertedOutcome","type":"string"},{"indexed":true,"internalType":"bytes32","name":"assertionId","type":"bytes32"}],"name":"MarketAsserted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":false,"internalType":"string","name":"name","type":"string"},{"indexed":false,"internalType":"string","name":"description","type":"string"},{"indexed":false,"internalType":"string","name":"url","type":"string"},{"indexed":false,"internalType":"address","name":"outcome0","type":"address"},{"indexed":false,"internalType":"address","name":"outcome1","type":"address"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"MarketInitialized","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"}],"name":"MarketResolved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcomeResult","type":"bytes32"}],"name":"MarketResolved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"seller","type":"address"},{"indexed":false,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcome","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"payout","type":"uint256"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"SellShares","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"tokensCreated","type":"uint256"}],"name":"TokensCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"tokensRedeemed","type":"uint256"}],"name":"TokensRedeemed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"payout","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"outcome1Tokens","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"outcome2Tokens","type":"uint256"}],"name":"TokensSettled","type":"event"},{"inputs":[{"internalType":"bytes32","name":"marketID","type":"bytes32"},{"internalType":"bytes32","name":"outcome","type":"bytes32"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint64","name":"price","type":"uint64"}],"name":"buy","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"marketName","type":"string"},{"internalType":"string","name":"marketDescription","type":"string"},{"internalType":"string","name":"url","type":"string"},{"internalType":"string","name":"outcome1","type":"string"},{"internalType":"string","name":"outcome2","type":"string"},{"internalType":"uint256","name":"optionalReward","type":"uint256"},{"internalType":"int128","name":"b","type":"int128"}],"name":"createMarket","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"marketID","type":"bytes32"},{"internalType":"bytes32","name":"outcome","type":"bytes32"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"payout","type":"uint256"},{"internalType":"uint64","name":"price","type":"uint64"}],"name":"sell","outputs":[{"internalType":"bool","name":"success","type":"bool"}],"stateMutability":"nonpayable","type":"function"}] as const
+
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
 
 const predictionSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -34,13 +18,20 @@ const predictionSchema = z.object({
   outcome1: z.string().min(1, 'Outcome 1 is required'),
   outcome2: z.string().min(1, 'Outcome 2 is required'),
   url: z.string().url('Invalid URL'),
+  optionalReward: z.string().transform((val) => BigInt(val)),
+  b: z.string().transform((val) => BigInt(val)),
 })
 
 type PredictionFormData = z.infer<typeof predictionSchema>
 
-export default function CreatePrediction() {
+type CreatePredictionProps = {
+  onClose?: () => void
+}
+
+export default function CreatePrediction({ onClose }: CreatePredictionProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [createPrediction] = useMutation(CREATE_PREDICTION)
+  const [transactionHash, setTransactionHash] = useState<`0x${string}` | null>(null)
+  const BLOCK_EXPLORER_URL = process.env.NEXT_PUBLIC_BLOCK_EXPLORER_URL
 
   const {
     register,
@@ -51,18 +42,43 @@ export default function CreatePrediction() {
     resolver: zodResolver(predictionSchema),
   })
 
+  const { writeContractAsync: createMarket, data: hash } = useWriteContract()
+
+  const { isLoading: isTransactionLoading } = useWaitForTransactionReceipt({
+    hash,
+  })
+
   const onSubmit = async (data: PredictionFormData) => {
     try {
-      await createPrediction({
-        variables: data,
-        refetchQueries: ['GetPredictions'],
+      await createMarket({
+        abi: CONTRACT_ABI,
+        address: CONTRACT_ADDRESS,
+        functionName: 'createMarket',
+        args: [
+          data.name,
+          data.description,
+          data.url,
+          data.outcome1,
+          data.outcome2,
+          data.optionalReward,
+          data.b,
+        ],
+        gas: BigInt(100000),
+        maxFeePerGas: BigInt(1000000000),
+        maxPriorityFeePerGas: BigInt(1000000000),
       })
-      setIsOpen(false)
-      reset()
     } catch (error) {
       console.error('Error creating prediction:', error)
     }
   }
+
+  // Watch for transaction completion
+  useEffect(() => {
+    if (hash && !isTransactionLoading) {
+      setIsOpen(false)
+      onClose?.()
+    }
+  }, [hash, isTransactionLoading, onClose])
 
   return (
     <>
@@ -86,6 +102,7 @@ export default function CreatePrediction() {
                   {...register('name')}
                   className="input-field"
                   placeholder="Prediction name"
+                  readOnly={!!hash}
                 />
                 {errors.name && (
                   <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -101,6 +118,7 @@ export default function CreatePrediction() {
                   className="input-field"
                   rows={3}
                   placeholder="Prediction description"
+                  readOnly={!!hash}
                 />
                 {errors.description && (
                   <p className="mt-1 text-sm text-red-600">
@@ -117,6 +135,7 @@ export default function CreatePrediction() {
                   {...register('outcome1')}
                   className="input-field"
                   placeholder="First possible outcome"
+                  readOnly={!!hash}
                 />
                 {errors.outcome1 && (
                   <p className="mt-1 text-sm text-red-600">
@@ -133,6 +152,7 @@ export default function CreatePrediction() {
                   {...register('outcome2')}
                   className="input-field"
                   placeholder="Second possible outcome"
+                  readOnly={!!hash}
                 />
                 {errors.outcome2 && (
                   <p className="mt-1 text-sm text-red-600">
@@ -149,27 +169,86 @@ export default function CreatePrediction() {
                   {...register('url')}
                   className="input-field"
                   placeholder="https://example.com"
+                  readOnly={!!hash}
                 />
                 {errors.url && (
                   <p className="mt-1 text-sm text-red-600">{errors.url.message}</p>
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Optional Reward (in wei)
+                </label>
+                <input
+                  {...register('optionalReward')}
+                  type="number"
+                  className="input-field"
+                  placeholder="0"
+                  readOnly={!!hash}
+                />
+                {errors.optionalReward && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {errors.optionalReward.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  B Value
+                </label>
+                <input
+                  {...register('b')}
+                  type="number"
+                  className="input-field"
+                  placeholder="0"
+                  readOnly={!!hash}
+                />
+                {errors.b && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {errors.b.message}
+                  </p>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="btn-primary"
-                >
-                  {isSubmitting ? 'Creating...' : 'Create Prediction'}
-                </button>
+                {!hash ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsOpen(false)}
+                      className="btn-secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || isTransactionLoading}
+                      className="btn-primary"
+                    >
+                      {isSubmitting || isTransactionLoading ? 'Creating...' : 'Create Prediction'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsOpen(false)}
+                      className="btn-secondary"
+                    >
+                      Close
+                    </button>
+                    <a
+                      href={`${BLOCK_EXPLORER_URL}/tx/${hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary"
+                    >
+                      View on Explorer
+                    </a>
+                  </>
+                )}
               </div>
             </form>
           </div>
