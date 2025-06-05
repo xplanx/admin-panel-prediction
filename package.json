@@ -25,6 +25,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.50.1",
+    "react-hot-toast": "^2.5.2",
     "viem": "^2.7.9",
     "wagmi": "^2.5.7",
     "zod": "^3.22.4"

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client'
 import { gql } from '@apollo/client'
 import { format } from 'date-fns'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import toast from 'react-hot-toast'
 import CreatePrediction from '@/components/CreatePrediction'
 import PredictionDetails from '@/components/PredictionDetails'
 
@@ -35,8 +36,19 @@ export default function Home() {
     variables: { orderBy, orderDirection },
   })
 
-  if (loading) return <div>Loading...</div>
-  if (error) return <div>Error: {error.message}</div>
+  useEffect(() => {
+    if (loading) {
+      toast.loading('Loading predictions...', { id: 'loading-predictions' })
+    } else {
+      toast.dismiss('loading-predictions')
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (error) {
+      toast.error(`Error: ${error.message}`)
+    }
+  }, [error])
 
   const predictions = data?.predictionss?.items || []
 
@@ -85,7 +97,22 @@ export default function Home() {
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-xl font-semibold mb-2">{prediction.name}</h2>
+                  <div className="flex items-center gap-2 mb-2">
+                    <h2 className="text-xl font-semibold">{prediction.name}</h2>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(prediction.id);
+                        toast.success('Prediction ID copied to clipboard');
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                      title="Copy ID to clipboard"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                        <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                      </svg>
+                    </button>
+                  </div>
                   <p className="text-gray-600 mb-4">{prediction.description}</p>
                   <div className="flex gap-4 text-sm text-gray-500">
                     <span>Outcomes: {prediction.outcome1} vs {prediction.outcome2}</span>

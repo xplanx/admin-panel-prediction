@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery } from '@apollo/client'
 import { gql } from '@apollo/client'
+import toast from 'react-hot-toast'
 
 const GET_PREDICTION = gql`
   query GetPrediction($id: ID!) {
@@ -68,6 +69,22 @@ export default function EditPrediction({
     variables: { id: predictionId },
   })
 
+  useEffect(() => {
+    if (loading) {
+      toast.loading('Loading prediction data...', { id: 'loading-edit' })
+    } else {
+      toast.dismiss('loading-edit')
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (error) {
+      toast.error(`Error: ${error.message}`)
+    }
+  }, [error])
+
+  const prediction = data?.prediction
+
   const {
     register,
     handleSubmit,
@@ -76,9 +93,6 @@ export default function EditPrediction({
     resolver: zodResolver(predictionSchema),
     defaultValues: data?.prediction,
   })
-
-  if (loading) return <div>Loading...</div>
-  if (error) return <div>Error: {error.message}</div>
 
   const onSubmit = async (formData: PredictionFormData) => {
     try {

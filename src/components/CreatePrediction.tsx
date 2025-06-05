@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther } from 'viem'
+import toast from 'react-hot-toast'
 
 // TODO: Replace with actual ABI
 const CONTRACT_ABI = [{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"buyer","type":"address"},{"indexed":false,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcome","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"BuyShares","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":false,"internalType":"string","name":"assertedOutcome","type":"string"},{"indexed":true,"internalType":"bytes32","name":"assertionId","type":"bytes32"}],"name":"MarketAsserted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":false,"internalType":"string","name":"name","type":"string"},{"indexed":false,"internalType":"string","name":"description","type":"string"},{"indexed":false,"internalType":"string","name":"url","type":"string"},{"indexed":false,"internalType":"address","name":"outcome0","type":"address"},{"indexed":false,"internalType":"address","name":"outcome1","type":"address"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"MarketInitialized","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"}],"name":"MarketResolved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcomeResult","type":"bytes32"}],"name":"MarketResolved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"seller","type":"address"},{"indexed":false,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcome","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"payout","type":"uint256"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"SellShares","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"tokensCreated","type":"uint256"}],"name":"TokensCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"tokensRedeemed","type":"uint256"}],"name":"TokensRedeemed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"payout","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"outcome1Tokens","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"outcome2Tokens","type":"uint256"}],"name":"TokensSettled","type":"event"},{"inputs":[{"internalType":"bytes32","name":"marketID","type":"bytes32"},{"internalType":"bytes32","name":"outcome","type":"bytes32"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint64","name":"price","type":"uint64"}],"name":"buy","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"marketName","type":"string"},{"internalType":"string","name":"marketDescription","type":"string"},{"internalType":"string","name":"url","type":"string"},{"internalType":"string","name":"outcome1","type":"string"},{"internalType":"string","name":"outcome2","type":"string"},{"internalType":"uint256","name":"optionalReward","type":"uint256"},{"internalType":"int128","name":"b","type":"int128"}],"name":"createMarket","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"marketID","type":"bytes32"},{"internalType":"bytes32","name":"outcome","type":"bytes32"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"payout","type":"uint256"},{"internalType":"uint64","name":"price","type":"uint64"}],"name":"sell","outputs":[{"internalType":"bool","name":"success","type":"bool"}],"stateMutability":"nonpayable","type":"function"}] as const
@@ -30,7 +31,7 @@ type CreatePredictionProps = {
 
 export default function CreatePrediction({ onClose }: CreatePredictionProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [transactionHash, setTransactionHash] = useState<`0x${string}` | null>(null)
+  const [loadingToastId, setLoadingToastId] = useState<string | null>(null)
   const BLOCK_EXPLORER_URL = process.env.NEXT_PUBLIC_BLOCK_EXPLORER_URL
 
   const {
@@ -42,15 +43,17 @@ export default function CreatePrediction({ onClose }: CreatePredictionProps) {
     resolver: zodResolver(predictionSchema),
   })
 
-  const { writeContractAsync: createMarket, data: hash } = useWriteContract()
+  const { writeContract, data: hash } = useWriteContract()
 
-  const { isLoading: isTransactionLoading } = useWaitForTransactionReceipt({
+  const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransactionReceipt({
     hash,
   })
 
   const onSubmit = async (data: PredictionFormData) => {
     try {
-      await createMarket({
+      const toastId = toast.loading('Creating prediction...')
+      setLoadingToastId(toastId)
+      await writeContract({
         abi: CONTRACT_ABI,
         address: CONTRACT_ADDRESS,
         functionName: 'createMarket',
@@ -69,16 +72,26 @@ export default function CreatePrediction({ onClose }: CreatePredictionProps) {
       })
     } catch (error) {
       console.error('Error creating prediction:', error)
+      if (loadingToastId) {
+        toast.dismiss(loadingToastId)
+      }
+      toast.error('Failed to create prediction. Please try again.')
     }
   }
 
   // Watch for transaction completion
   useEffect(() => {
     if (hash && !isTransactionLoading) {
-      setIsOpen(false)
-      onClose?.()
+      if (loadingToastId) {
+        toast.dismiss(loadingToastId)
+      }
+      if (isSuccess) {
+        toast.success('Prediction created successfully!')
+        setIsOpen(false)
+        onClose?.()
+      }
     }
-  }, [hash, isTransactionLoading, onClose])
+  }, [hash, isTransactionLoading, isSuccess, loadingToastId, onClose])
 
   return (
     <>

@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client'
 import { gql } from '@apollo/client'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 
 const GET_PREDICTION_DETAILS = gql`
   query GetPredictionDetails($id: String!) {
@@ -44,10 +45,47 @@ export default function PredictionDetails({
     variables: { id: predictionId },
   })
 
-  if (loading) return <div>Loading...</div>
-  if (error) return <div>Error: {error.message}</div>
+  useEffect(() => {
+    if (loading) {
+      toast.loading('Loading prediction details...', { id: 'loading-details' })
+    } else {
+      toast.dismiss('loading-details')
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (error) {
+      toast.error(`Error: ${error.message}`)
+    }
+  }, [error])
 
   const prediction = data?.predictions
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg p-6">
+          <p>Loading prediction details...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !prediction) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg p-6">
+          <p className="text-red-600">Error loading prediction details</p>
+          <button
+            onClick={onClose}
+            className="mt-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
@@ -88,7 +126,7 @@ export default function PredictionDetails({
             </div>
             <div>
               <h3 className="text-lg font-semibold mb-2">Optional Reward</h3>
-              <p className="text-gray-600">{prediction.optionalReward || 'N/A'}</p>
+              <p className="text-gray-600">{prediction.optionalReward || 'N/A'} USDT</p>
             </div>
             <div>
               <h3 className="text-lg font-semibold mb-2">URL</h3>
