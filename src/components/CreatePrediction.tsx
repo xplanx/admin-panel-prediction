@@ -9,9 +9,23 @@ import { parseEther } from 'viem'
 import toast from 'react-hot-toast'
 
 // TODO: Replace with actual ABI
-const CONTRACT_ABI = [{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"buyer","type":"address"},{"indexed":false,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcome","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"BuyShares","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":false,"internalType":"string","name":"assertedOutcome","type":"string"},{"indexed":true,"internalType":"bytes32","name":"assertionId","type":"bytes32"}],"name":"MarketAsserted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":false,"internalType":"string","name":"name","type":"string"},{"indexed":false,"internalType":"string","name":"description","type":"string"},{"indexed":false,"internalType":"string","name":"url","type":"string"},{"indexed":false,"internalType":"address","name":"outcome0","type":"address"},{"indexed":false,"internalType":"address","name":"outcome1","type":"address"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"MarketInitialized","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"}],"name":"MarketResolved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcomeResult","type":"bytes32"}],"name":"MarketResolved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"seller","type":"address"},{"indexed":false,"internalType":"bytes32","name":"marketID","type":"bytes32"},{"indexed":false,"internalType":"bytes32","name":"outcome","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"payout","type":"uint256"},{"indexed":false,"internalType":"uint64","name":"price","type":"uint64"}],"name":"SellShares","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"tokensCreated","type":"uint256"}],"name":"TokensCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"tokensRedeemed","type":"uint256"}],"name":"TokensRedeemed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"marketId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"payout","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"outcome1Tokens","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"outcome2Tokens","type":"uint256"}],"name":"TokensSettled","type":"event"},{"inputs":[{"internalType":"bytes32","name":"marketID","type":"bytes32"},{"internalType":"bytes32","name":"outcome","type":"bytes32"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint64","name":"price","type":"uint64"}],"name":"buy","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"marketName","type":"string"},{"internalType":"string","name":"marketDescription","type":"string"},{"internalType":"string","name":"url","type":"string"},{"internalType":"string","name":"outcome1","type":"string"},{"internalType":"string","name":"outcome2","type":"string"},{"internalType":"uint256","name":"optionalReward","type":"uint256"},{"internalType":"int128","name":"b","type":"int128"}],"name":"createMarket","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"marketID","type":"bytes32"},{"internalType":"bytes32","name":"outcome","type":"bytes32"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"payout","type":"uint256"},{"internalType":"uint64","name":"price","type":"uint64"}],"name":"sell","outputs":[{"internalType":"bool","name":"success","type":"bool"}],"stateMutability":"nonpayable","type":"function"}] as const
+const CONTRACT_ABI = [{"inputs":[{"internalType":"string","name":"metadata","type":"string"},{"internalType":"uint64","name":"deadline","type":"uint64"},{"internalType":"bytes32","name":"outcome1","type":"bytes32"},{"internalType":"bytes32","name":"outcome2","type":"bytes32"},{"internalType":"uint256","name":"optionalReward","type":"uint256"},{"internalType":"int128","name":"b","type":"int128"}],"name":"createMarket","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"nonpayable","type":"function"}] as const
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
+const USDT_ADDRESS = '0xEF880a8F3ef575CefBFD23F7166306adf9B21D87' as `0x${string}`
+
+const USDT_ABI = [
+  {
+    "constant": false,
+    "inputs": [
+      { "name": "_spender", "type": "address" },
+      { "name": "_value", "type": "uint256" }
+    ],
+    "name": "approve",
+    "outputs": [{ "name": "", "type": "bool" }],
+    "type": "function"
+  }
+] as const
 
 const predictionSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -21,6 +35,7 @@ const predictionSchema = z.object({
   url: z.string().url('Invalid URL'),
   optionalReward: z.string().transform((val) => BigInt(val)),
   b: z.string().transform((val) => BigInt(val)),
+  deadline: z.string().transform((val) => BigInt(Math.floor(new Date(val).getTime() / 1000))),
 })
 
 type PredictionFormData = z.infer<typeof predictionSchema>
@@ -43,41 +58,86 @@ export default function CreatePrediction({ onClose }: CreatePredictionProps) {
     resolver: zodResolver(predictionSchema),
   })
 
-  const { writeContract, data: hash } = useWriteContract()
+  const { writeContractAsync, data: hash } = useWriteContract()
+  const [approvalHash, setApprovalHash] = useState<`0x${string}` | undefined>(undefined)
+  const [formData, setFormData] = useState<PredictionFormData | null>(null)
+  const [isApproving, setIsApproving] = useState(false)
 
   const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransactionReceipt({
     hash,
   })
 
+  const { isLoading: isApprovalLoading, isSuccess: isApprovalSuccess } = useWaitForTransactionReceipt({
+    hash: approvalHash,
+  })
+
   const onSubmit = async (data: PredictionFormData) => {
     try {
-      const toastId = toast.loading('Creating prediction...')
+      setIsApproving(true)
+      const toastId = toast.loading('Approving token...')
       setLoadingToastId(toastId)
-      await writeContract({
-        abi: CONTRACT_ABI,
-        address: CONTRACT_ADDRESS,
-        functionName: 'createMarket',
-        args: [
-          data.name,
-          data.description,
-          data.url,
-          data.outcome1,
-          data.outcome2,
-          data.optionalReward,
-          data.b,
-        ],
-        gas: BigInt(100000),
-        maxFeePerGas: BigInt(1000000000),
-        maxPriorityFeePerGas: BigInt(1000000000),
+      setFormData(data)
+
+      // First approve the token
+      const approvalAmount = data.optionalReward * BigInt(10 ** 6)
+      const approvalResult = await writeContractAsync({
+        abi: USDT_ABI,
+        address: USDT_ADDRESS,
+        functionName: 'approve',
+        args: [CONTRACT_ADDRESS, approvalAmount],
       })
+      setApprovalHash(approvalResult)
+
     } catch (error) {
-      console.error('Error creating prediction:', error)
+      console.error('Error in approval:', error)
       if (loadingToastId) {
         toast.dismiss(loadingToastId)
       }
-      toast.error('Failed to create prediction. Please try again.')
+      toast.error('Failed to approve token. Please try again.')
+      setIsApproving(false)
     }
   }
+
+  // Watch for approval completion and then create market
+  useEffect(() => {
+    const createMarketAfterApproval = async () => {
+      if (isApprovalSuccess && formData) {
+        try {
+          if (loadingToastId) {
+            toast.dismiss(loadingToastId)
+          }
+          const newToastId = toast.loading('Creating prediction market...')
+          setLoadingToastId(newToastId)
+
+          const metaData: string = JSON.stringify({name: formData.name, description: formData.description, url: formData.url});
+          await writeContractAsync({
+            abi: CONTRACT_ABI,
+            address: CONTRACT_ADDRESS,
+            functionName: 'createMarket',
+            args: [
+              metaData,
+              formData.deadline,
+              `0x0100000000000000000000000000000000000000000000000000000000000000`,
+              `0x0200000000000000000000000000000000000000000000000000000000000000`,
+              formData.optionalReward,
+              formData.b,
+            ]
+          })
+          setIsApproving(false)
+        } catch (error) {
+          debugger;
+          console.error('Error creating market:', error)
+          if (loadingToastId) {
+            toast.dismiss(loadingToastId)
+          }
+          toast.error('Failed to create market. Please try again.')
+          setIsApproving(false)
+        }
+      }
+    }
+
+    createMarketAfterApproval()
+  }, [isApprovalSuccess, formData])
 
   // Watch for transaction completion
   useEffect(() => {
@@ -87,11 +147,9 @@ export default function CreatePrediction({ onClose }: CreatePredictionProps) {
       }
       if (isSuccess) {
         toast.success('Prediction created successfully!')
-        setIsOpen(false)
-        onClose?.()
       }
     }
-  }, [hash, isTransactionLoading, isSuccess, loadingToastId, onClose])
+  }, [hash, isTransactionLoading, isSuccess, loadingToastId])
 
   return (
     <>
@@ -225,6 +283,24 @@ export default function CreatePrediction({ onClose }: CreatePredictionProps) {
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Deadline
+                </label>
+                <input
+                  {...register('deadline')}
+                  type="datetime-local"
+                  className="input-field"
+                  min={new Date().toISOString().slice(0, 16)}
+                  readOnly={!!hash}
+                />
+                {errors.deadline && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {errors.deadline.message}
+                  </p>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 mt-6">
                 {!hash ? (
                   <>
@@ -232,15 +308,16 @@ export default function CreatePrediction({ onClose }: CreatePredictionProps) {
                       type="button"
                       onClick={() => setIsOpen(false)}
                       className="btn-secondary"
+                      disabled={isApproving || isTransactionLoading}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmitting || isTransactionLoading}
+                      disabled={isApproving || isTransactionLoading}
                       className="btn-primary"
                     >
-                      {isSubmitting || isTransactionLoading ? 'Creating...' : 'Create Prediction'}
+                      {isApproving ? 'Approving...' : isTransactionLoading ? 'Creating...' : 'Create Prediction'}
                     </button>
                   </>
                 ) : (
