@@ -12,7 +12,7 @@ import toast from 'react-hot-toast'
 const CONTRACT_ABI = [{"inputs":[{"internalType":"string","name":"metadata","type":"string"},{"internalType":"uint64","name":"deadline","type":"uint64"},{"internalType":"bytes32","name":"outcome1","type":"bytes32"},{"internalType":"bytes32","name":"outcome2","type":"bytes32"},{"internalType":"uint256","name":"optionalReward","type":"uint256"},{"internalType":"int128","name":"b","type":"int128"}],"name":"createMarket","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"nonpayable","type":"function"}] as const
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
-const USDT_ADDRESS = '0xEF880a8F3ef575CefBFD23F7166306adf9B21D87' as `0x${string}`
+const USDT_ADDRESS = '0x9d655A9a4F711ddb561CA108976072D1E24640B7' as `0x${string}`
 
 const USDT_ABI = [
   {
@@ -30,9 +30,9 @@ const USDT_ABI = [
 const predictionSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().min(1, 'Description is required'),
-  outcome1: z.string().min(1, 'Outcome 1 is required'),
-  outcome2: z.string().min(1, 'Outcome 2 is required'),
-  url: z.string().url('Invalid URL'),
+  outcome1: z.string().min(1, 'Outcome 1 is required').default('yes'),
+  outcome2: z.string().min(1, 'Outcome 2 is required').default('no'),
+  url: z.string().url('Invalid URL').default('https://picsum.photos/300/200'),
   optionalReward: z.string().transform((val) => BigInt(val)),
   b: z.string().transform((val) => BigInt(val)),
   deadline: z.string().transform((val) => BigInt(Math.floor(new Date(val).getTime() / 1000))),
