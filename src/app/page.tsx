@@ -10,8 +10,8 @@ import CreatePrediction from '@/components/CreatePrediction'
 import PredictionDetails from '@/components/PredictionDetails'
 
 const GET_PREDICTIONS = gql`
-  query GetPredictions($orderBy: String, $orderDirection: String) {
-    predictionss(orderBy: $orderBy, orderDirection: $orderDirection) {
+  query GetPredictions($orderBy: String, $orderDirection: String, $limit: Int, $after: String) {
+    predictionss(orderBy: $orderBy, orderDirection: $orderDirection, limit: $limit, after: $after) {
       items {
         id
         name
@@ -23,6 +23,11 @@ const GET_PREDICTIONS = gql`
         url
         createdAt
       }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      totalCount
     }
   }
 `
@@ -31,9 +36,17 @@ export default function Home() {
   const [orderBy, setOrderBy] = useState('createdAt')
   const [orderDirection, setOrderDirection] = useState('desc')
   const [selectedPredictionId, setSelectedPredictionId] = useState<string | null>(null)
+  const [after, setAfter] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(true)
+  const ITEMS_PER_PAGE = 10
 
-  const { loading, error, data, refetch } = useQuery(GET_PREDICTIONS, {
-    variables: { orderBy, orderDirection },
+  const { loading, error, data, fetchMore } = useQuery(GET_PREDICTIONS, {
+    variables: { 
+      orderBy, 
+      orderDirection,
+      limit: ITEMS_PER_PAGE,
+      after: null
+    },
   })
 
   useEffect(() => {
@@ -50,7 +63,37 @@ export default function Home() {
     }
   }, [error])
 
+  useEffect(() => {
+    if (data?.predictionss?.pageInfo) {
+      setHasMore(data.predictionss.pageInfo.hasNextPage)
+      setAfter(data.predictionss.pageInfo.endCursor)
+    }
+  }, [data])
+
+  const loadMore = () => {
+    if (!hasMore || loading) return
+
+    fetchMore({
+      variables: {
+        after,
+        limit: ITEMS_PER_PAGE,
+        orderBy,
+        orderDirection,
+      },
+      updateQuery: (prev, { fetchMoreResult }) => {
+        if (!fetchMoreResult) return prev
+        return {
+          predictionss: {
+            ...fetchMoreResult.predictionss,
+            items: [...prev.predictionss.items, ...fetchMoreResult.predictionss.items],
+          },
+        }
+      },
+    })
+  }
+
   const predictions = data?.predictionss?.items || []
+  const totalCount = data?.predictionss?.totalCount || 0
 
   return (
     <main className="min-h-screen p-8">
@@ -58,7 +101,7 @@ export default function Home() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Predictions</h1>
           <div className="flex items-center gap-4">
-            <CreatePrediction onClose={() => refetch()} />
+            <CreatePrediction onClose={() => fetchMore({ variables: { after: null } })} />
             <ConnectButton />
           </div>
         </div>
@@ -70,6 +113,8 @@ export default function Home() {
               const [field, direction] = e.target.value.split('_')
               setOrderBy(field)
               setOrderDirection(direction)
+              setAfter(null)
+              fetchMore({ variables: { after: null } })
             }}
             className="input-field max-w-xs"
           >
@@ -79,7 +124,7 @@ export default function Home() {
             <option value="name_desc">Name (Z-A)</option>
           </select>
           <button
-            onClick={() => refetch()}
+            onClick={() => fetchMore({ variables: { after: null } })}
             className="btn-secondary flex items-center gap-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -134,6 +179,32 @@ export default function Home() {
               </div>
             </div>
           ))}
+        </div>
+
+        {hasMore && (
+          <div className="mt-8 flex justify-center">
+            <button
+              onClick={loadMore}
+              disabled={loading}
+              className="btn-secondary flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Loading...
+                </>
+              ) : (
+                'Load More'
+              )}
+            </button>
+          </div>
+        )}
+
+        <div className="mt-4 text-center text-sm text-gray-500">
+          Showing {predictions.length} of {totalCount} predictions
         </div>
       </div>
 

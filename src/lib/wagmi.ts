@@ -1,5 +1,5 @@
 import { http, createConfig } from 'wagmi'
-import { mainnet, bscTestnet } from 'wagmi/chains'
+import { monadTestnet } from 'wagmi/chains'
 import { getDefaultWallets } from '@rainbow-me/rainbowkit'
 
 const { connectors } = getDefaultWallets({
@@ -8,10 +8,10 @@ const { connectors } = getDefaultWallets({
 })
 
 export const config = createConfig({
-  chains: [mainnet, bscTestnet],
+  chains: [monadTestnet],
   transports: {
-    [mainnet.id]: http(),
-    [bscTestnet.id]: http(),
+    [monadTestnet.id]: http(),
   },
   connectors,
+  ssr: true,
 }) 
